@@ -1,0 +1,206 @@
+# Final-Project-
+import pandas as pd 
+import matplotlib.pyplot as plt 
+import sklearn as sk 
+from mpl_toolkits.mplot3d import Axes3D
+import os
+import numpy as np
+
+data = pd.read_csv('/kaggle/input/80-cereals/cereal.csv') #the first row are already variable names
+df=pd.DataFrame(data)
+df.head()
+
+df.shape ##checking for total number of rows and columns
+
+header=df.columns #storing column names
+print(header)
+
+df.nunique() #checking for the unique values in each attribute.
+
+df.info() #Getting more information on the columns.
+
+# Above is a summary of the data. Notice an important problem in our data set: The minimum value for carbo, sugars, potass is -1.
+# There are cereals which take 1 gram of carbohydrates, 1 gram of sugar, and 1 milligram of potassium from our body.
+# Comparing max, min, and mean values also gives an idea that there is an outlier present in the dataset.
+
+The mean value for fiber = 2.1 min value for fiber = 0, max = 14! The max value creates an unwanted deviance in our dataset.
+df[df['carbo'] <0] #gives us the rows that have negative carbohydrates.
+
+df[df['potass']<0] #gives us the rows that have negative potassium.
+.
+df[df['sugars']<0] #gives us the rows that have negative sugar.
+
+df[df['fiber']==14] #the outlier.
+
+data=df.values
+data=list(data)
+#removing the rowes that had -1 values:
+data.pop(4) 
+data.pop(19)
+data.pop(55)
+#removing the outlier row:
+data.pop(3)
+
+df_new=pd.DataFrame(data)
+df_new.columns=header # There has been stored column names before.
+df_new.head()
+
+df_new.describe() #summarizing the data again
+
+df_new.shape
+
+df_new[df_new.duplicated()==True] # gives any duplicate records. Which there are not.
+
+df.isna().sum() #No null values
+
+plt.figure(figsize=(10,10))
+df.groupby('mfr')['rating'].mean().plot.bar(color='g')
+plt.title('Mean Ratings of Manufacturers')
+plt.show()
+
+df_new.type.value_counts() # Seeing the counts of cold and hot cereals.
+
+# Given the problem statement "Prediction of rating for the cereals", it is known that their names & the names of their manufacturer are not unnecessary. Let's remove those attributes.
+# In the dataframe, there are 73 cereals that are cold, and 1 that is hot. This disproportion of hot and cold cereals can impact the prediction, if include the "type" of the cereal in the model. Lets drop the type as well.
+Lastly, intuitively speaking, number of cups in one serving would not impact the ratings of the cereal. We may drop that as well.
+df_new.drop(["name","mfr","type","cups"],axis='columns',inplace=True)
+
+df_new.head()
+
+df_new.shape
+
+#Now we have 74 records and 13 attributes left.
+#To find the relevant attributes only, we quickly create the correlation matrix and check for multicollinearity.
+corr_mat=df_new.corr()
+mat=corr_mat.values
+plt.figure(figsize=(18,10))
+sn.heatmap(corr_mat, annot=True)
+plt.show()
+
+df_new.drop(["weight"],axis='columns',inplace=True)
+
+plt.figure(figsize=(7,7))
+df.groupby('shelf')['shelf'].count().plot.pie(autopct = '%2.0f')
+plt.show()
+
+df_new.head() #checking out the dataframe
+
+#We visualize the relation between Sugar & Rating
+y_rating=df_new["rating"]
+x_sugar=df_new["sugars"]
+plt.figure(figsize=(7,7))
+sn.regplot(x=x_sugar,y=y_rating) #regression best fit line command
+plt.title('Sugar v. Cereal Rating')
+plt.show()
+
+#We visualize the relation between Calories & Rating
+x_calories=df_new["calories"]
+plt.figure(figsize=(7,7))
+sn.regplot(x=x_calories,y=y_rating)
+plt.title('Calories v. Cereal Rating')
+plt.show()
+
+#Let's check for relationship between fiber & ratings
+x_fiber=df_new["fiber"]
+plt.figure(figsize=(7,7))
+sn.regplot(x=x_fiber,y=y_rating)
+plt.title('Fiber v. Cereal Rating')
+plt.show()
+
+#Checking the distribution of ratings
+plt.figure(figsize=(7,7))
+plt.hist(y_rating)
+plt.show()
+
+## Machine Learning Model 
+#Regression
+
+dummies = pd.get_dummies(df_new['shelf'],prefix='shelf')
+
+#We have creative dummies for shelves:
+#shelf_1=> Shelf 1 Dummy
+#shelf_2=> Shelf 2 Dummy
+#shelf_3=> Shelf 3 Dummy
+
+df_new=pd.concat([df_new, dummies], axis=1)
+
+df_new.drop(["shelf"],axis='columns',inplace=True) #dropping original Shelf variable because now we have its dummies
+
+df_new.head()
+
+cols = df_new.columns.tolist()
+cols.remove('rating')
+cols.append('rating')
+DF=df_new[cols]
+DF.head()
+
+## Originally, there was 3 unique values for Shelf, and we created 3 dummies for them. Including all three of them will result in creating multi-collinearity the mode;.
+## Drop 1 of these dummies or drop the constant term in linear regression. The constant term has other information to tell, so we drop one of the dummies.
+DF.drop(["shelf_3"],axis='columns',inplace=True) #to solve dummy trap problem!
+DF.head()
+
+d=DF.values
+d=list(d)
+
+#creating y variable: ratings
+y=[]
+for i in range(0,len(d)):
+  y.append(d[i][11])
+y=np.array(y)
+
+#creating x variables: All other variables except ratings
+x=[]
+for i in range(0,len(d)):
+  x.append(d[i][:11])
+x=np.array(x)
+
+x = sm.add_constant(x) #adding the constant/intercept to regression model
+model = sm.OLS(y, x).fit()
+model.summary()
+
+##x10 & x11 variable (shelf_1 and shelf_2, respectively) are insignifant at 95% confidence (since their t-stat < |1.96|). Hence, they do not impact cereal rating. We can drop them from our model.
+#creating x variables again, this time not including dummies
+x=[]
+for i in range(0,len(d)):
+  x.append(d[i][:9])
+x=np.array(x)
+
+x_train,x_test,y_train,y_test = train_test_split(x,y,test_size=0.20,random_state=42)
+
+x_train = sm.add_constant(x_train) #adding the constant/intercept to regression model
+model = sm.OLS(y_train, x_train).fit()
+model.summary()
+
+##Now, all included variables are significant!
+#To visualize how each variable "fits" to predict the ratings:
+sn.pairplot(DF, x_vars=['calories', 'protein', 'fat'], y_vars='rating', size=12, aspect=0.7, kind='reg')
+sn.pairplot(DF, x_vars=['sodium', 'fiber', 'carbo'], y_vars='rating', size=12, aspect=0.7, kind='reg')
+sn.pairplot(DF, x_vars=['sugars', 'potass', 'vitamins'], y_vars='rating', size=12, aspect=0.7, kind='reg')
+
+## How do we quantify the accuracy of our model? Ans: Mean Square Error.
+from sklearn.metrics import mean_squared_error
+x_test=sm.add_constant(x_test)
+#y_pred = model.get_prediction(x_test).summary_frame(alpha=0.05)
+y_pred=model.predict(x_test)
+print("MSE: ",metrics.mean_absolute_error(y_test, y_pred))
+print("MSA: ",metrics.mean_squared_error(y_test, y_pred))
+print("RMSE: ",np.sqrt(metrics.mean_squared_error(y_test, y_pred)))
+
+#Mean Square Error is extremely small.
+#Our model is of the form:
+#Rating = 54.9 - 0.22 calories + 3.27 protein - 1.69 fat - 0.054 sodium + 3.44 fiber + 1.09 carbo - 0.724 sugars - 0.034 potass - 0.0512 * vitamins
+#For any given cereal, we can enter the amount of the mentioned ingredients and predict its ratings.
+
+#Since we won't be needing Shelf dummies anymore (they are not relevant), we can drop them:
+df_new.drop(["shelf_1","shelf_2","shelf_3"],axis='columns',inplace=True)
+df_new.head()
+
+##Groubby aggregations 
+df = pd.read_csv(cereal.csv, na_values= "?")
+df
+
+## groupby sodium 
+df.groupby(['name'])(['sodium'])
+
+## groupby type
+df.groupby(['name'])(['type'])
